@@ -1,0 +1,439 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(GGally)
+library(reshape2)
+library(broom)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The dataset used in this project consists of **651 randomly sampled movies** produced and released before 2016. The data were collected from publicly available sources, primarily the Rotten Tomatoes and IMDB APIs. These APIs provide comprehensive information about each movie, including variables related to cast, genre, critic and audience scores, and other attributes.
+
+Because the data were collected through a random sampling method, we can reasonably generalize our findings to the broader population of movies released prior to 2016. However, since this is an **observational dataset**, we should be cautious in making any causal claims based on our analysis.
+
+Some variables, such as `actor1` to `actor5`, are informative but not directly suitable for statistical modeling without significant transformation. As part of the data preparation process, we will make decisions about which variables are meaningful for modeling, and potentially restructure or exclude certain variables to best answer our research question.
+
+Additionally, attention will be given to issues such as **multicollinearity** and **missing data**, as these can affect the validity of our model and interpretations.
+
+* * *
+
+## Part 2: Research question
+
+**What factors significantly influence the audience scores of movies?**
+
+* * *
+
+## Part 3: Exploratory data analysis
+```{r}
+str(movies)
+```
+
+```{r}
+summary(movies)
+```
+
+```{r}
+# Check missing value
+colSums(is.na(movies))
+```
+```{r}
+#imputation runtime with median
+movies$runtime[is.na(movies$runtime)] <- median(movies$runtime, na.rm = TRUE)
+
+
+```
+
+
+```{r}
+#imputation dvd_rel_year with median
+movies$dvd_rel_year[is.na(movies$dvd_rel_year)] <- median(movies$dvd_rel_year, na.rm = TRUE)
+
+```
+
+
+```{r}
+#imputation dvd_rel_month with median
+movies$dvd_rel_month[is.na(movies$dvd_rel_month)] <- median(movies$dvd_rel_month, na.rm = TRUE)
+
+```
+
+
+```{r}
+#imputation dvd_rel_day with median
+movies$dvd_rel_day[is.na(movies$dvd_rel_day)] <- median(is.na(movies$dvd_rel_day))
+```
+
+
+```{r}
+# Plot the distribution of the audience_score variable using a histogram
+ggplot(movies, aes(x = audience_score)) +
+  geom_histogram(binwidth = 10, fill = "palegreen3", color = "black") +  # histogram with palegreen fill and black border
+  labs(title = "Distribution of Audience Score",
+       x = "Audience Score",
+       y = "Count") +
+  theme_minimal()
+```
+**Interpretation: **
+This chart shows the distribution of audience scores for the movies. Most films received relatively high scores, with a peak (the most common scores) around 75 to 87.5. The distribution is slightly left-skewed, meaning more films have above-average scores, while a few low-scoring films "pull" the average downward. Overall, audience scores tend to be positive.
+
+
+
+
+
+```{r}
+# Calculate correlations between audience_score and numeric variables
+cor(movies$audience_score, movies$imdb_rating, use = "complete.obs")
+```
+```{r}
+cor(movies$audience_score, movies$critics_score, use = "complete.obs")
+```
+
+```{r}
+ggpairs(movies[, c("audience_score", "imdb_rating", "critics_score", "runtime", "imdb_num_votes")],
+        upper = list(continuous = wrap("cor", size = 4)),        # korelasi di atas
+        lower = list(continuous = wrap("points", size=1, alpha=0.5)),  # scatter plot bawah
+        diag = list(continuous = wrap("densityDiag", alpha=0.5)),      # density plot diagonal
+        title = "Pair Plot of Movie Scores and Attributes"
+) + 
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+**Interpretation: Pair Plot of Movie Scores and Attributes**
+
+- **Distribution of Scores/Attributes (Diagonal Plots):**  
+  - `audience_score`: Most films have high audience scores (similar to previous plot).  
+  - `imdb_rating`: IMDb ratings generally range between 6 and 8.  
+  - `critics_score`: Critics scores are quite spread out but tend to be high for many films.  
+  - `runtime`: Most films have standard durations (~90–120 minutes), with some very long outliers.  
+  - `imdb_num_votes`: Most films receive relatively few votes, though some popular ones have many.
+
+- **Relationships Between Scores/Attributes (Scatterplots and Correlations):**  
+  - **Audience Score & IMDb Rating (Correlation: 0.865***):** Strongest positive relationship; films with high audience scores also tend to have high IMDb ratings.  
+  - **Audience Score & Critics Score (Correlation: 0.704***):** Also a strong positive relationship, though more variable than IMDb rating.  
+  - **IMDb Rating & Critics Score (Correlation: 0.765***):** High ratings from IMDb generally align with high critics scores.  
+  - **Runtime & Number of Votes (Correlation: 0.344***):** Slight tendency for longer films or those with many votes to be related, but correlation is moderate.  
+  - **Other Relationships:** Correlations between scores/ratings and runtime or votes tend to be weaker but still statistically significant.
+
+- **Summary:**  
+  Audience scores, IMDb ratings, and critics scores are strongly and positively correlated. Good films on one metric tend to be good on the others. Attributes like runtime and number of votes have smaller effects on these scores.
+
+
+  
+```{r}
+ggplot(movies, aes(x = imdb_rating, y = audience_score, color = mpaa_rating)) +
+  geom_point(alpha = 0.6) +
+  facet_wrap(~ genre) +
+  theme_minimal() +
+  labs(
+    title = "Audience Score vs IMDb Rating by Genre and MPAA Rating",
+    x = "IMDb Rating",
+    y = "Audience Score",
+    color = "MPAA Rating"
+  )
+
+```
+
+**Interpretation: Audience Score vs IMDb Rating by Genre**
+
+- **Overall Trend:**  
+  There's a clear positive relationship — films with higher IMDb ratings tend to also receive higher audience scores across most genres.
+
+- **Strong Correlation:**  
+  Genres like *Action & Adventure*, *Documentary*, *Mystery & Suspense*, and *Sci-Fi & Fantasy* show tightly clustered points, indicating strong alignment between audience and IMDb ratings.
+
+- **More Variation:**  
+  Genres such as *Comedy*, *Drama*, and *Horror* display a similar trend but with more spread, suggesting varied audience reactions despite similar IMDb scores.
+
+- **Notable Patterns:**  
+  *Animation* films often score high on both metrics, while *Art House & International* films show a positive trend with more variability.
+
+- **Conclusion:**  
+  IMDb ratings and audience scores generally align across genres, though the strength of that relationship varies.
+
+
+
+
+```{r}
+# Calculate correlation matrix
+cor_mat <- cor(movies[, c("audience_score", "imdb_rating", "critics_score", "runtime", "imdb_num_votes")], use = "complete.obs")
+
+# Convert matrix to long format
+cor_mat_melt <- melt(cor_mat)
+
+# Plot heatmap
+ggplot(cor_mat_melt, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1,1), space = "Lab", name="Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  coord_fixed() +
+  labs(title = "Correlation Heatmap")
+
+```
+
+**Interpretation: Correlation Heatmap**
+
+- The heatmap shows the strength of correlation between movie variables (`audience_score`, `imdb_rating`, `critics_score`, `runtime`, `imdb_num_votes`). Color intensity indicates correlation strength:
+
+  - Dark red: Strong positive correlation (close to +1) — as one variable increases, the other tends to increase too.  
+  - Light red/orange: Moderate positive correlation.  
+  - White: Very weak or no correlation (near zero).  
+  - (Blue, if present): Negative correlation (one variable increases, the other decreases). This plot mainly shows positive correlations.
+
+- Key observations:  
+  1. **Strongest correlations (darkest red, off the diagonal):**  
+     - Between `audience_score` and `imdb_rating`  
+     - Between `imdb_rating` and `critics_score`  
+     - Between `audience_score` and `critics_score`  
+     These indicate these three scores are highly positively related.
+
+  2. **Moderate correlations (red/orange):**  
+     - Between `runtime` and `imdb_num_votes`  
+     - Between `imdb_num_votes` and the three scores (`audience_score`, `imdb_rating`, `critics_score`)
+
+  3. **Weaker correlations (lighter red):**  
+     - Between `runtime` and the scores (`audience_score`, `imdb_rating`, `critics_score`), indicating duration has less influence on scores.
+
+- **Summary:**  
+  The heatmap visually confirms strong positive relationships between audience score, IMDb rating, and critics score. Vote count also correlates positively with these scores, while runtime shows weaker associations.
+
+```{r}
+# Create boxplots to compare audience_score based on categorical variable best_actor_win
+ggplot(movies, aes(x = factor(best_actor_win), y = audience_score, fill = factor(best_actor_win))) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("pink", "lightgreen")) +
+  labs(title = "Audience Score by Best Actor Win",
+       x = "Best Actor Win",
+       y = "Audience Score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Create boxplots to compare audience_score based on categorical variable best_actor_win
+ggplot(movies, aes(x = factor(best_actress_win), y = audience_score, fill = factor(best_actress_win))) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("pink", "lightgreen")) +
+  labs(title = "Audience Score by Best Actress Win",
+       x = "Best Actress Win",
+       y = "Audience Score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+# create boxplots for audience_score across different genres
+library(ggplot2)
+ggplot(movies, aes(x = genre, y = audience_score)) +
+  geom_boxplot(fill = "lightblue") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # rotate x-axis labels for readability
+  labs(title = "Audience Score by Genre", x = "Genre", y = "Audience Score")
+
+```
+
+**Interpretation: Audience Score by Genre**
+
+- The plot shows the distribution of audience scores across different movie genres using box plots:  
+  - The line inside the box represents the **median** audience score  
+  - The box shows the **interquartile range (IQR)**, where 50% of scores lie  
+  - The vertical lines (whiskers) show the spread outside the IQR  
+  - Black dots represent **outliers** (scores far from the rest)
+
+- Key observations:  
+  1. **Genres with the highest median audience scores:**  
+     - Documentary (around 85–88), consistently high  
+     - Musical & Performing Arts (around 80), fairly consistent  
+     - Animation and Drama (around 68–70)
+
+  2. **Genres with lower median audience scores:**  
+     - Horror (around 40–43)  
+     - Science Fiction & Fantasy (around 45–48) with very wide variation  
+     - Comedy and Action & Adventure (around 50–52)
+
+  3. **Score variation:**  
+     - Science Fiction & Fantasy shows the largest range, from very low to very high scores  
+     - Documentary, Musical, and Animation have more consistent scores (shorter boxes)  
+     - Action, Comedy, and Other genres show moderate to wide variation
+
+  4. **Outliers:**  
+     - Some genres have movies with scores very different from the majority, e.g., low-scoring animations or high-scoring horror films
+
+- **Summary:**  
+  Documentary and Musical genres tend to be consistently well-liked by audiences. Horror tends to have lower scores. Sci-Fi/Fantasy has very diverse audience reception.
+
+
+
+* * *
+
+## Part 4: Modeling
+
+We'll fit a multiple linear regression model to predict the **audience_score** using several predictors.
+
+```{r}
+# Fit a linear regression model
+model <- lm(audience_score ~ imdb_rating + critics_score + runtime + genre + mpaa_rating, data = movies)
+summary(model)
+```
+
+
+```{r}
+# Plot residuals to check assumptions visually
+par(mfrow = c(2, 2))  # 2x2 plot layout for diagnostic plots
+plot(model)
+```
+
+
+```{r}
+# Predict Audience Score using the model (optional)
+movies$predicted_audience_score <- predict(model, newdata = movies)
+
+# Plot actual vs predicted Audience Score
+ggplot(movies, aes(x = predicted_audience_score, y = audience_score)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(title = "Actual vs Predicted Audience Score",
+       x = "Predicted Audience Score",
+       y = "Actual Audience Score") +
+  theme_minimal()
+```
+
+```{r}
+
+# Fit the model
+model <- lm(audience_score ~ imdb_rating + critics_score + runtime + genre, data = movies)
+
+# Extract model summary with CI and significance
+model_coef <- tidy(model, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%  # Remove intercept
+  mutate(significant = ifelse(p.value < 0.05, "Significant", "Not Significant"))
+
+# Plot with horizontal error bars and color by significance
+ggplot(model_coef, aes(x = estimate, y = reorder(term, estimate), color = significant)) +
+  geom_point(size = 3) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_color_manual(values = c("Significant" = "red", "Not Significant" = "black")) +
+  labs(
+    title = "Linear Regression Coefficients Predicting Audience Score (95% CI)",
+    x = "Estimate",
+    y = "Predictor",
+    color = "Significance"
+  ) +
+  theme_minimal()
+
+
+```
+
+
+```{r}
+model2 <- lm(imdb_rating ~ audience_score + critics_score + runtime + genre, data = movies)
+summary(model2)
+
+model2 <- lm(imdb_rating ~ audience_score + critics_score + runtime + genre, data = movies)
+model2_coef <- tidy(model2, conf.int = TRUE)
+model2_coef$significant <- ifelse(model2_coef$p.value < 0.05, "Significant", "Not Significant")
+
+ggplot(model2_coef[-1, ], aes(x = estimate, y = term, color = significant)) +  # Remove intercept
+  geom_point(size = 3) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_color_manual(values = c("Significant" = "red", "Not Significant" = "black")) +
+  labs(title = "Linear Regression Coefficients predicting IMDb Rating (95% CI)",
+       x = "Estimate",
+       y = "Predictor",
+       color = "Significance") +
+  theme_minimal()
+```
+
+
+
+* * *
+
+## Part 5: Prediction
+```{r}
+# Prepare new data 
+new_movies <- data.frame(
+  title = c("Zootopia", "Deadpool", "La La Land", "Before the Flood", "The Witch"),
+  genre = factor(c("Animation", 
+                   "Action & Adventure", 
+                   "Musical & Performing Arts", 
+                   "Documentary", 
+                   "Horror"), 
+                 levels = levels(movies$genre)),
+  runtime = c(108, 108, 128, 96, 92),
+  mpaa_rating = factor(c("PG", "R", "PG-13", "PG", "R"), 
+                       levels = levels(movies$mpaa_rating)),
+  imdb_rating = c(8.0, 8.0, 8.0, 8.2, 6.9),
+  critics_score = c(98, 85, 91, 75, 90),
+  critics_source = c("Rotten Tomatoes", 
+                     "Metacritic", 
+                     "IMDb Metascore", 
+                     "Geo National", 
+                     "Rotten Tomatoes"),
+  audience_score = c(92, 96, 81, 85, 55)  
+)
+
+print(new_movies)
+
+```
+
+
+```{r}
+# Prepare data for prediction by selecting only the variables used in the model
+new_movies_predict <- new_movies[, c("genre", "runtime", "mpaa_rating", "imdb_rating", "critics_score")]
+# We exclude columns like 'title' and 'critics_source' because they are not predictors in the model
+
+# Use the model to predict audience scores for new movies
+# Also calculate 95% prediction intervals to quantify uncertainty around predictions
+predictions <- predict(model, newdata = new_movies_predict, interval = "prediction", level = 0.95)
+
+# Add predicted scores and intervals back to the data frame
+new_movies$predicted_audience_score <- predictions[, "fit"]  # predicted values
+new_movies$pred_lower <- predictions[, "lwr"]               # lower bound of 95% prediction interval
+new_movies$pred_upper <- predictions[, "upr"]               # upper bound of 95% prediction interval
+
+# Show movie title, predicted score, interval, and critics source
+print(new_movies[, c("title", 
+                     "audience_score",    
+                     "predicted_audience_score", 
+                     "pred_lower", 
+                     "pred_upper")])
+
+```
+Based on the model predictions, Zootopia is expected to have an audience score of about 96.25, with a likely range between 75.88 and 116.61. This means the actual score is expected to fall within that range. Deadpool is predicted to score around 86.87, La La Land around 91.06, and Before the Flood around 90.22 — all with similar ranges of uncertainty. Among the five movies, The Witch has the lowest predicted score at 65.90, with a range from 46.19 to 85.61. These results show that while the model gives an estimated score, there's always some uncertainty, which is reflected in the prediction intervals.
+
+* * *
+
+## Part 6: Conclusion
+
+Based on the linear regression analysis, we conclude that IMDb rating is the strongest and most significant predictor of audience score, followed by critics score. Meanwhile, the runtime variable shows a small negative effect that is marginally significant. Certain genres, such as Animation, have a positive and significant impact, while Horror and Mystery & Suspense tend to lower audience scores. On the other hand, MPAA ratings do not appear to have a significant influence after accounting for other variables.
+
+The model performs fairly well, with an Adjusted R² of 76%, indicating that a substantial portion of the variation in audience scores can be explained by the predictors in the model. However, there is evidence of heteroskedasticity and the presence of influential outliers, which may affect the accuracy and reliability of coefficient estimates. As a next step, applying data transformations or using robust regression methods could improve the model's validity.
+
+Overall, this model offers valuable insights into the factors that shape audience ratings, especially regarding IMDb scores and film genres.
