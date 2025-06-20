@@ -21,10 +21,10 @@ To model and explain audience scores based on key movie characteristics and eval
 - Adjusted R²: ~0.62
 
 ## 📄 Project Files
-- `predict_audience_score.Rmd`: Main analysis file
-- `predict_audience_score.html`: Rendered output
-- `slides.pdf`: Summary presentation
-- `movie_data.csv`: Dataset used (if public)
+- `final_reg_model_project.Rmd`: Main analysis file
+- `final_reg_model_project.html`: Rendered output
+- `predict_audience_score_slides.pdf`: Summary presentation
+- `movies.Rdata`: Dataset used 
 
 
 ## 🔗 Related Links
